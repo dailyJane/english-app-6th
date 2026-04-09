@@ -1,13 +1,10 @@
-import sqlite3
+import psycopg2
 import pandas as pd
-from datetime import datetime
-import os
-
-DB_FILENAME = 'english_app.db'
+import streamlit as st
 
 def get_connection():
-    # Return a connection to SQLite DB
-    return sqlite3.connect(DB_FILENAME)
+    # Use the DB_URL stored securely in Streamlit Secrets
+    return psycopg2.connect(st.secrets["DB_URL"])
 
 def init_db():
     conn = get_connection()
@@ -15,7 +12,7 @@ def init_db():
     # Create USERS table
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             class_name TEXT,
             student_name TEXT,
             UNIQUE(class_name, student_name)
@@ -25,14 +22,14 @@ def init_db():
     # Create SCORES table
     c.execute('''
         CREATE TABLE IF NOT EXISTS scores (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER,
             unit_name TEXT,
             target_text TEXT,
             recognized_text TEXT,
             score_percentage REAL,
             grade TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     ''')
@@ -43,15 +40,13 @@ def get_or_create_user(class_name, student_name):
     conn = get_connection()
     c = conn.cursor()
     
-    # Check if user exists
-    c.execute('SELECT id FROM users WHERE class_name=? AND student_name=?', (class_name, student_name))
+    c.execute('SELECT id FROM users WHERE class_name=%s AND student_name=%s', (class_name, student_name))
     row = c.fetchone()
     
     if row is None:
-        # Create new user
-        c.execute('INSERT INTO users (class_name, student_name) VALUES (?, ?)', (class_name, student_name))
+        c.execute('INSERT INTO users (class_name, student_name) VALUES (%s, %s) RETURNING id', (class_name, student_name))
         conn.commit()
-        user_id = c.lastrowid
+        user_id = c.fetchone()[0]
     else:
         user_id = row[0]
         
@@ -63,18 +58,17 @@ def insert_score(user_id, unit_name, target_text, recognized_text, score_percent
     c = conn.cursor()
     c.execute('''
         INSERT INTO scores (user_id, unit_name, target_text, recognized_text, score_percentage, grade)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s)
     ''', (user_id, unit_name, target_text, recognized_text, score_percentage, grade))
     conn.commit()
     conn.close()
 
 def get_user_scores(user_id):
     conn = get_connection()
-    # Use pandas to load directly into a dataframe
     df = pd.read_sql_query('''
         SELECT unit_name, target_text, recognized_text, score_percentage, grade, timestamp
         FROM scores
-        WHERE user_id = ?
+        WHERE user_id = %s
         ORDER BY timestamp DESC
     ''', conn, params=(user_id,))
     conn.close()
@@ -86,7 +80,7 @@ def get_class_ranking(class_name, unit_name, user_id):
         SELECT u.id as user_id, s.target_text, s.score_percentage
         FROM users u
         JOIN scores s ON u.id = s.user_id
-        WHERE u.class_name = ? AND s.unit_name = ?
+        WHERE u.class_name = %s AND s.unit_name = %s
         ORDER BY s.timestamp DESC
     ''', conn, params=(class_name, unit_name))
     conn.close()
@@ -95,10 +89,8 @@ def get_class_ranking(class_name, unit_name, user_id):
         return 0, 0
         
     df_latest = df.drop_duplicates(subset=['user_id', 'target_text'], keep='first')
-    
     user_avg = df_latest.groupby('user_id')['score_percentage'].mean().reset_index()
     user_avg = user_avg.sort_values(by='score_percentage', ascending=False).reset_index(drop=True)
-    
     user_avg['rank'] = user_avg['score_percentage'].rank(method='min', ascending=False)
     
     try:
@@ -115,7 +107,7 @@ def get_top_students(class_name):
         SELECT u.student_name, s.target_text, s.score_percentage
         FROM users u
         JOIN scores s ON u.id = s.user_id
-        WHERE u.class_name = ?
+        WHERE u.class_name = %s
         ORDER BY s.timestamp DESC
     ''', conn, params=(class_name,))
     conn.close()
@@ -136,7 +128,7 @@ def get_practice_kings(class_name):
         SELECT u.student_name, COUNT(s.id) as practice_count
         FROM users u
         JOIN scores s ON u.id = s.user_id
-        WHERE u.class_name = ?
+        WHERE u.class_name = %s
         GROUP BY u.id
         ORDER BY practice_count DESC
     ''', conn, params=(class_name,))
