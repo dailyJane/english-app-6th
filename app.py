@@ -143,6 +143,8 @@ def calculate_similarity_and_feedback(target, recognized):
 # --- SESSION STATE ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+if "is_teacher" not in st.session_state:
+    st.session_state.is_teacher = False
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
 if "student_name" not in st.session_state:
@@ -158,7 +160,7 @@ def login_page():
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.markdown("### 🙋 나의 정보 입력하기")
-        c_name = st.selectbox("몇 반인가요?", ["1반", "2반", "3반"])
+        c_name = st.selectbox("몇 반인가요?", ["1반", "2반"])
         s_name = st.text_input("나의 이름을 적어주세요!", placeholder="예: 홍길동")
         
         if st.button("🚀 교실로 입장하기!", use_container_width=True):
@@ -169,8 +171,20 @@ def login_page():
                 st.session_state.user_id = user_id
                 st.session_state.student_name = s_name
                 st.session_state.class_name = c_name
+                st.session_state.is_teacher = False
                 st.session_state.logged_in = True
                 st.rerun()
+                
+        st.write("<br><br>", unsafe_allow_html=True)
+        with st.expander("👨‍🏫 선생님 전용 메뉴"):
+            t_pw = st.text_input("선생님 비밀번호를 입력하세요:", type="password")
+            if st.button("🔑 선생님 로그인", use_container_width=True):
+                if t_pw == "qlalfqjsgh":
+                    st.session_state.is_teacher = True
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else:
+                    st.error("비밀번호가 틀렸습니다!")
 
 # --- MAIN APP ---
 def main_app():
@@ -477,8 +491,41 @@ def summary_page():
     st.markdown("#### 🔍 전체 세부 결과표")
     st.dataframe(df_display, use_container_width=True)
 
+def teacher_dashboard():
+    st.title("👨‍🏫 선생님 대시보드 (학습 현황)")
+    
+    if st.sidebar.button("🚪 선생님 로그아웃"):
+        st.session_state.logged_in = False
+        st.session_state.is_teacher = False
+        st.rerun()
+    st.sidebar.write("---")
+    
+    menu = st.sidebar.radio("📊 대시보드 메뉴", ["🏆 1등부터 순위 (점수 기준)", "🏃‍♂️ 연습왕 순위 (횟수 기준)"])
+    
+    t_class = st.selectbox("반을 선택해주세요:", ["1반", "2반"])
+    st.write("---")
+    
+    if menu == "🏆 1등부터 순위 (점수 기준)":
+        st.markdown(f"### 👑 {t_class} 평균 점수 명예의 전당")
+        df_top = db.get_top_students(t_class)
+        if df_top.empty:
+            st.info("아직 이 반의 학습 기록이 없습니다.")
+        else:
+            st.dataframe(df_top, use_container_width=True)
+            
+    elif menu == "🏃‍♂️ 연습왕 순위 (횟수 기준)":
+        st.markdown(f"### 땀방울이 반짝이는 {t_class} 연습왕 순위 💦")
+        df_kings = db.get_practice_kings(t_class)
+        if df_kings.empty:
+            st.info("아직 이 반의 학습 기록이 없습니다.")
+        else:
+            st.dataframe(df_kings, use_container_width=True)
+
 # --- ROUTER ---
 if st.session_state.logged_in:
-    main_app()
+    if st.session_state.get("is_teacher", False):
+        teacher_dashboard()
+    else:
+        main_app()
 else:
     login_page()

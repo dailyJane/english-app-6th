@@ -108,3 +108,43 @@ def get_class_ranking(class_name, unit_name, user_id):
         
     total = len(user_avg)
     return rank, total
+
+def get_top_students(class_name):
+    conn = get_connection()
+    df = pd.read_sql_query('''
+        SELECT u.student_name, s.target_text, s.score_percentage
+        FROM users u
+        JOIN scores s ON u.id = s.user_id
+        WHERE u.class_name = ?
+        ORDER BY s.timestamp DESC
+    ''', conn, params=(class_name,))
+    conn.close()
+    
+    if df.empty:
+        return pd.DataFrame()
+        
+    df_latest = df.drop_duplicates(subset=['student_name', 'target_text'], keep='first')
+    user_avg = df_latest.groupby('student_name')['score_percentage'].mean().round(1).reset_index()
+    user_avg = user_avg.sort_values(by='score_percentage', ascending=False).reset_index(drop=True)
+    user_avg.index = user_avg.index + 1
+    user_avg = user_avg.rename(columns={"student_name": "학생 이름", "score_percentage": "평균 점수"})
+    return user_avg
+
+def get_practice_kings(class_name):
+    conn = get_connection()
+    df = pd.read_sql_query('''
+        SELECT u.student_name, COUNT(s.id) as practice_count
+        FROM users u
+        JOIN scores s ON u.id = s.user_id
+        WHERE u.class_name = ?
+        GROUP BY u.id
+        ORDER BY practice_count DESC
+    ''', conn, params=(class_name,))
+    conn.close()
+    
+    if df.empty:
+        return pd.DataFrame()
+        
+    df.index = df.index + 1
+    df = df.rename(columns={"student_name": "학생 이름", "practice_count": "총 연습 횟수"})
+    return df
