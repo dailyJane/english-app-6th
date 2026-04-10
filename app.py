@@ -160,7 +160,7 @@ def login_page():
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.markdown("### 🙋 나의 정보 입력하기")
-        c_name = st.selectbox("몇 반인가요?", ["1반", "2반"])
+        c_name = st.selectbox("몇 반인가요?", ["6학년 1반", "6학년 2반"])
         s_name = st.text_input("나의 이름을 적어주세요!", placeholder="예: 홍길동")
         
         if st.button("🚀 교실로 입장하기!", use_container_width=True):
@@ -502,7 +502,7 @@ def teacher_dashboard():
     
     menu = st.sidebar.radio("📊 대시보드 메뉴", ["🏆 1등부터 순위 (점수 기준)", "🏃‍♂️ 연습왕 순위 (횟수 기준)"])
     
-    t_class = st.selectbox("반을 선택해주세요:", ["1반", "2반"])
+    t_class = st.selectbox("반을 선택해주세요:", ["6학년 1반", "6학년 2반"])
     st.write("---")
     
     if menu == "🏆 1등부터 순위 (점수 기준)":
